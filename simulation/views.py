@@ -4,44 +4,73 @@ from .models import Skill, CareerPath
 
 @api_view(['POST'])
 def chat_api(request):
-    # Grab all the data React just sent over
-    user_skills = request.data.get('skills', '').lower()
-    academic_level = request.data.get('academicLevel', '')
-    study_hours = request.data.get('studyHours', '10') # Default to 10 if empty
+    # 1. Extract and clean the user's data
+    user_skills_raw = request.data.get('skills', '').lower()
+    academic_level = request.data.get('academicLevel', 'Unknown')
     
+    # Safely convert study hours to an integer, default to 10 if they typed text
     try:
-        # Check if the user mentioned 'python' or 'react' in their skills string
-        matched_skill = Skill.objects.filter(name__icontains="python").first() # Simplification for testing
+        study_hours = int(request.data.get('studyHours', '10'))
+    except ValueError:
+        study_hours = 10 
+
+    # Break their typed skills into a clean list (e.g., "python, react, sql" -> ['python', 'react', 'sql'])
+    user_skills_list = [s.strip() for s in user_skills_raw.split(',') if s.strip()]
+
+    try:
+        all_careers = CareerPath.objects.all()
         
-        # You can expand this logic to search for all words in the user's string!
-        for word in user_skills.split(','):
-             skill_check = Skill.objects.filter(name__icontains=word.strip()).first()
-             if skill_check:
-                 matched_skill = skill_check
-                 break
+        best_match = None
+        highest_score = -1
+        missing_skills_for_best = []
+        user_matched_skills = []
 
-        if matched_skill:
-            possible_careers = matched_skill.careers.all()
+        # 2. The Scoring Engine: Evaluate every career path against the user's skills
+        for career in all_careers:
+            # Note: This assumes CareerPath has a ManyToMany field to Skill with related_name='careers'
+            req_skills = career.skill_set.all() if hasattr(career, 'skill_set') else Skill.objects.filter(careers=career)
+            
+            req_skill_names = [skill.name.lower() for skill in req_skills]
+            
+            # Find the intersection (skills the user has that the career requires)
+            matched = [skill for skill in user_skills_list if skill in req_skill_names]
+            missing = [skill for skill in req_skill_names if skill not in user_skills_list]
+            
+            score = len(matched)
+            
+            # If this career is a better match than the previous ones, save it
+            if score > highest_score:
+                highest_score = score
+                best_match = career
+                missing_skills_for_best = missing
+                user_matched_skills = matched
 
-            if possible_careers.exists():
-                career = possible_careers.first() # Grab the first match (Full Stack Developer)
-                
-                # Rule-Based Math: Calculate time based on their available hours
-                total_hours_needed = career.estimated_months_to_entry * 40 # Assuming 40 hours/month standard
-                user_weeks_needed = total_hours_needed / max(int(study_hours), 1)
-                user_months_needed = round(user_weeks_needed / 4, 1)
+        # 3. Formulate the Dynamic Response
+        if best_match and highest_score > 0:
+            total_req = highest_score + len(missing_skills_for_best)
+            completion_percentage = int((highest_score / total_req) * 100) if total_req > 0 else 0
+            
+            # Dynamic time calculation: Only calculate time based on the MISSING skills
+            # Base assumption: Each missing skill takes about 2 months at 40 hours/month (80 hours total)
+            total_hours_needed = len(missing_skills_for_best) * 80
+            weeks_needed = total_hours_needed / max(study_hours, 1)
+            months_needed = round(weeks_needed / 4, 1)
 
-                bot_reply = (f"Simulation Complete! Based on your skills in {matched_skill.name}, "
-                             f"as a {academic_level}, you are a great fit for the '{career.title}' role. "
-                             f"Since you study {study_hours} hours/week, we estimate it will take you "
-                             f"{user_months_needed} months to reach entry-level readiness. "
-                             f"The difficulty level is {career.base_difficulty_level}/10.")
+            # Build the text response
+            bot_reply = f"Simulation Complete! ⚙️\n\n"
+            bot_reply += f"Based on your skills in {', '.join(user_matched_skills).title()}, you are a {completion_percentage}% match for the {best_match.title} role. "
+            
+            if missing_skills_for_best:
+                bot_reply += f"To reach entry-level readiness, you still need to learn: {', '.join(missing_skills_for_best).title()}. "
+                bot_reply += f"Since you study {study_hours} hours/week as a {academic_level}, we estimate it will take you {months_needed} months to close this skill gap."
             else:
-                bot_reply = f"You know {matched_skill.name}! We are still mapping out the specific paths for that."
+                bot_reply += f"You actually have all the core skills mapped for this role! You are ready to start building a portfolio."
+                
         else:
-            bot_reply = "I couldn't match those specific skills in my database. Try adding 'Python' or 'React'!"
+            bot_reply = ("I ran the simulation, but I couldn't find a strong career match for those specific skills in my database yet. "
+                         "Try adding core skills like 'Python', 'React', or 'SQL'!")
 
     except Exception as e:
-        bot_reply = f"My simulation engine encountered an error: {str(e)}"
+        bot_reply = f"System Error in Simulation Engine: {str(e)}"
 
     return Response({"reply": bot_reply})
