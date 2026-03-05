@@ -25,14 +25,13 @@ def chat_api(request):
         missing_skills_for_best = []
         user_matched_skills = []
 
-        # 2. The Scoring Engine: Evaluate every career path against the user's skills
+        
         for career in all_careers:
-            # Note: This assumes CareerPath has a ManyToMany field to Skill with related_name='careers'
+            
             req_skills = career.skill_set.all() if hasattr(career, 'skill_set') else Skill.objects.filter(careers=career)
             
             req_skill_names = [skill.name.lower() for skill in req_skills]
             
-            # Find the intersection (skills the user has that the career requires)
             matched = [skill for skill in user_skills_list if skill in req_skill_names]
             missing = [skill for skill in req_skill_names if skill not in user_skills_list]
             
