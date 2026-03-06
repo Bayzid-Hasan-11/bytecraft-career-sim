@@ -1,12 +1,20 @@
+import os
 import json
 import google.generativeai as genai
+from dotenv import load_dotenv
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Skill, CareerPath
 
+# Load the secret key from the .env file
+load_dotenv()
+API_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key="AIzaSyCnhSCx0hCQDD1RGIlQUCQobEZBlr9j4KE")
+# Initialize the AI Brain securely
+genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
+
+# ... (The rest of your chat_api function stays exactly the same) ...
 
 @api_view(['POST'])
 def chat_api(request):
