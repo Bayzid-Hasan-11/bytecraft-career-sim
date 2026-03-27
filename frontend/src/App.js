@@ -7,10 +7,7 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Force anyone visiting the main page to go to login first */}
         <Route path="/" element={<Navigate to="/login" replace />} />
-        
-        {/* Our two main routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
       </Routes>

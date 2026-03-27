@@ -11,16 +11,14 @@ function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError(''); // Clear previous errors
+    setError(''); 
 
     try {
-      // Ask Django for the secure JWT Tokens
       const response = await axios.post('http://127.0.0.1:8000/api/token/', {
         username: username,
         password: password
       });
       
-      // Save tokens to browser memory and jump to the dashboard!
       localStorage.setItem('access_token', response.data.access);
       localStorage.setItem('refresh_token', response.data.refresh);
       navigate('/dashboard');
