@@ -4,4 +4,5 @@ from . import views
 urlpatterns = [
     # This connects the React frontend to your AI algorithm!
     path('chat/', views.chat_api, name='chat_api'),
+    path('upload-resume/', views.upload_resume_api, name='upload_resume_api'), # NEW ENDPOINT
 ]

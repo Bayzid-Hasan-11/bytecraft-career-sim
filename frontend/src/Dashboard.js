@@ -3,7 +3,139 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas'; // NEW
+import { jsPDF } from 'jspdf';         // NEW
 import './App.css';
+
+// --- NEW FEATURE: The Interactive Top 3 Roadmap ---
+// --- NEW FEATURE: The Interactive Top 3 Roadmap ---
+// --- NEW FEATURE: The Interactive Top 3 Roadmap (Now with PDF Export!) ---
+const InteractiveRoadmap = ({ matches }) => {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const printRef = useRef(null); // The camera lens for our PDF
+  
+  const activeMatch = matches[selectedIndex];
+
+  if (!activeMatch) return null;
+
+  const isPerfectMatch = !activeMatch.missingSkillsData || activeMatch.missingSkillsData.length === 0;
+
+  // The PDF Generation Function
+  const handleExportPDF = async () => {
+    if (!printRef.current) return;
+    setIsExporting(true); // Changes button text to 'Exporting...'
+    
+    try {
+      // 1. Take a high-resolution snapshot of the div
+      const canvas = await html2canvas(printRef.current, { scale: 2, backgroundColor: '#0f172a' });
+      const imgData = canvas.toDataURL('image/png');
+      
+      // 2. Create the PDF document
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      // 3. Paste the image into the PDF and save it
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`ByteCraft_Roadmap_${activeMatch.career.replace(/\s+/g, '_')}.pdf`);
+    } catch (error) {
+      alert("Error generating PDF.");
+    }
+    
+    setIsExporting(false);
+  };
+
+  return (
+    <div className="interactive-roadmap-container" style={{ marginTop: '20px', backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px' }}>
+      
+      {/* 1. The Clickable Tabs */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {matches.map((match, index) => (
+          <button 
+            key={index} 
+            onClick={() => setSelectedIndex(index)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: selectedIndex === index ? '#10b981' : '#334155',
+              color: 'white',
+              border: 'none',
+              borderRadius: '20px',
+              cursor: 'pointer',
+              fontWeight: selectedIndex === index ? 'bold' : 'normal',
+              transition: '0.2s',
+              boxShadow: selectedIndex === index ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none'
+            }}
+          >
+            {match.career} ({match.matchPercentage}%)
+          </button>
+        ))}
+      </div>
+
+      {/* 2. The Content area we want to capture in the PDF */}
+      <div ref={printRef} style={{ padding: '20px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+        
+        {/* Dynamic Header for the PDF */}
+        <h2 style={{ color: '#10b981', textAlign: 'center', marginBottom: '15px', display: isExporting ? 'block' : 'none' }}>
+          ByteCraft AI Simulation: {activeMatch.career}
+        </h2>
+
+        {isPerfectMatch ? (
+          <div style={{ textAlign: 'center', padding: '20px', border: '1px solid #10b981', borderRadius: '8px' }}>
+            <h3 style={{ color: '#10b981', marginBottom: '10px' }}>🎉 100% Skill Match!</h3>
+            <p style={{ color: '#f8fafc', fontSize: '0.95rem' }}>
+              You already have all the core skills mapped for the <strong>{activeMatch.career}</strong> role. You are ready to start building a portfolio!
+            </p>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', textAlign: 'center', marginBottom: '15px' }}>
+              To become a <strong>{activeMatch.career}</strong>, you need to learn: {activeMatch.missingTextList.join(', ')}. 
+              Estimated time: <strong>{activeMatch.totalMonths} months</strong>.
+            </p>
+
+            <div style={{ width: '100%', height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={activeMatch.missingSkillsData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                  <XAxis type="number" stroke="#94a3b8" />
+                  <YAxis dataKey="name" type="category" stroke="#94a3b8" width={80} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                  <Bar dataKey="Months" radius={[0, 4, 4, 0]} animationDuration={500}>
+                    {activeMatch.missingSkillsData.map((entry, index) => ( <Cell key={`cell-${index}`} fill={'#10b981'} /> ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 3. The Export Button (Outside the printRef so it doesn't show up in the PDF) */}
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        <button 
+          onClick={handleExportPDF} 
+          disabled={isExporting}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: 'transparent',
+            color: '#10b981',
+            border: '2px solid #10b981',
+            borderRadius: '6px',
+            cursor: isExporting ? 'not-allowed' : 'pointer',
+            fontWeight: 'bold',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: '0.2s'
+          }}
+        >
+          {isExporting ? 'Generating Document...' : '📄 Download Roadmap (PDF)'}
+        </button>
+      </div>
+
+    </div>
+  );
+};
 
 function Dashboard() {
   const [step, setStep] = useState(1);
@@ -65,6 +197,44 @@ function Dashboard() {
     setStep(prev => prev + 1);
   };
 
+  // --- NEW FEATURE: AI Resume Parsing ---
+  const handleResumeUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsTyping(true); // Turn on the loading animation
+
+    // Package the file securely for transport
+    const uploadData = new FormData();
+    uploadData.append('resume', file);
+
+    try {
+      const response = await axios.post('http://127.0.0.1:8000/api/upload-resume/', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      const foundSkills = response.data.skills || [];
+      
+      // Capitalize the AI's lowercase output so it matches our React checkboxes
+      const formattedSkills = foundSkills.map(skill => {
+        const match = availableSkills.find(a => a.toLowerCase() === skill.toLowerCase());
+        return match ? match : skill.charAt(0).toUpperCase() + skill.slice(1);
+      });
+
+      // Automatically check the boxes!
+      setFormData(prev => ({
+        ...prev,
+        skills: [...new Set([...prev.skills, ...formattedSkills])] // Merges without duplicates
+      }));
+      
+      alert(`Success! Gemini AI found ${foundSkills.length} skills on your resume.`);
+    } catch (error) {
+      alert("Error: The AI could not read this PDF.");
+    }
+    
+    setIsTyping(false); // Turn off loading animation
+  };
+
   // 3. ADDED: Trigger AI when wizard finishes
   useEffect(() => {
     if (step === 4) {
@@ -83,7 +253,8 @@ function Dashboard() {
         academicLevel: formData.semester || 'Student'
       });
       
-      const botReply = { sender: 'bot', text: response.data.reply, chartData: response.data.chartData };
+      // We now look for 'matches' instead of 'chartData'
+      const botReply = { sender: 'bot', text: response.data.reply, matches: response.data.matches };
       setMessages(prev => [...prev, botReply]);
     } catch (error) {
       setMessages(prev => [...prev, { sender: 'bot', text: 'Error connecting to the AI Simulation Engine.' }]);
@@ -98,32 +269,6 @@ function Dashboard() {
     setMessages(prev => [...prev, { sender: 'user', text: input }]);
     sendToAI(input);
     setInput('');
-  };
-
-const renderChart = (chartData) => {
-    // We now look for the new detailed array sent from Django
-    if (!chartData || !chartData.missingSkillsData || chartData.missingSkillsData.length === 0) return null;
-    
-    // Django already did the perfect math, so we just pass the data straight to the chart!
-    const data = chartData.missingSkillsData;
-
-    return (
-      <div className="chart-container" style={{ width: '100%', height: 250, marginTop: '20px', backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px' }}>
-        <h4 style={{ color: '#10b981', marginBottom: '15px', textAlign: 'center' }}>
-          Learning Roadmap: {chartData.career} ({chartData.matchPercentage}% Match)
-        </h4>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-            <XAxis type="number" stroke="#94a3b8" />
-            <YAxis dataKey="name" type="category" stroke="#94a3b8" width={80} />
-            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155' }} />
-            <Bar dataKey="Months" radius={[0, 4, 4, 0]} animationDuration={1500}>
-              {data.map((entry, index) => ( <Cell key={`cell-${index}`} fill={'#10b981'} /> ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    );
   };
 
   // Common styles for wizard elements
@@ -146,15 +291,21 @@ const renderChart = (chartData) => {
         {messages.map((msg, index) => (
           <div key={index} className={`message-wrapper ${msg.sender}`}>
             {msg.sender === 'bot' && <div className="avatar bot-avatar">🤖</div>}
-            <div className="message" style={{ width: msg.chartData && msg.chartData.missingSkills && msg.chartData.missingSkills.length > 0 ? '100%' : 'auto' }}>
+            
+            <div className="message" style={{ width: msg.matches && msg.matches.length > 0 ? '100%' : 'auto' }}>
               <ReactMarkdown>{msg.text}</ReactMarkdown>
-              {msg.chartData && renderChart(msg.chartData)}
+              
+              {/* Renders the new interactive tabs if the bot sent matches! */}
+              {msg.matches && msg.matches.length > 0 && (
+                <InteractiveRoadmap matches={msg.matches} />
+              )}
             </div>
+            
             {msg.sender === 'user' && <div className="avatar user-avatar">👤</div>}
           </div>
         ))}
 
-        {/* --- ADDED: GUIDED WIZARD UI --- */}
+        {/* --- GUIDED WIZARD UI --- */}
         {step === 1 && (
           <div className="message-wrapper bot">
             <div className="avatar bot-avatar">🤖</div>
@@ -188,6 +339,24 @@ const renderChart = (chartData) => {
             <div className="avatar bot-avatar">🤖</div>
             <div className="message interactive-bubble">
               <p style={{marginBottom: '10px', color: '#94a3b8'}}>Select the technical skills you already know:</p>
+              
+              {/* --- NEW UPLOAD BUTTON UI --- */}
+              <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px dashed #10b981', textAlign: 'center' }}>
+                <p style={{ color: '#10b981', marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>⚡ AI Fast Track</p>
+                <input 
+                  type="file" 
+                  accept=".pdf" 
+                  id="resume-upload" 
+                  style={{ display: 'none' }} 
+                  onChange={handleResumeUpload} 
+                />
+                <label htmlFor="resume-upload" style={{ cursor: 'pointer', padding: '8px 16px', backgroundColor: '#334155', color: 'white', borderRadius: '6px', fontSize: '0.85rem' }}>
+                  📄 Upload Resume (PDF)
+                </label>
+                <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '8px' }}>Gemini AI will scan your PDF and auto-fill your skills.</p>
+              </div>
+              {/* ----------------------------- */}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 {availableSkills.map(skill => (
                   <label key={skill} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'white' }}>
