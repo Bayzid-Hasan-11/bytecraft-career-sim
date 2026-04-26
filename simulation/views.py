@@ -23,8 +23,7 @@ def chat_api(request):
     except ValueError:
         study_hours = 10 
 
-    # --- THE NEW SKILL WEIGHT DICTIONARY ---
-    # Customize these hours to make your graph look perfect for the presentation
+
     SKILL_TIME_ESTIMATES = {
         'python': 120, 'java': 160, 'c++': 180, 
         'javascript': 110, 'react': 100, 'django': 90,
@@ -36,7 +35,6 @@ def chat_api(request):
     bot_reply = "I ran the simulation, but I couldn't find a strong career match for those specific skills in my database yet."
 
     try:
-        # 1. Get AI Response
         prompt = f"""
         Analyze this user text: "{user_skills_raw}"
         Extract all technical skills, programming languages, and tools mentioned.
@@ -53,9 +51,8 @@ def chat_api(request):
         else:
             user_skills_list = []
 
-        # 2. Smart Scoring & Sorting Algorithm
         all_careers = CareerPath.objects.all()
-        all_career_scores = [] # NEW: We will store EVERY career's math here
+        all_career_scores = [] 
 
         for career in all_careers:
             req_skills = Skill.objects.filter(careers=career)
@@ -70,11 +67,11 @@ def chat_api(request):
                 else:
                     missing.append(req)
             
-            # Calculate match percentage for THIS specific career
+
             total_req = len(matched) + len(missing)
             completion_percentage = int((len(matched) / total_req) * 100) if total_req > 0 else 0
             
-            # If they have at least a 1% match, calculate the exact months needed
+
             if completion_percentage > 0:
                 detailed_missing_skills = []
                 total_months_needed = 0
@@ -90,7 +87,6 @@ def chat_api(request):
                         "Months": skill_months
                     })
                 
-                # Save all the math for this career into our new array
                 all_career_scores.append({
                     "career": career.title,
                     "matchPercentage": completion_percentage,
@@ -100,13 +96,10 @@ def chat_api(request):
                     "matchedTextList": [m.title() for m in matched]  # Capitalized for React Text
                 })
 
-        # 3. Sort the array from highest match to lowest, and grab the Top 3
         all_career_scores.sort(key=lambda x: x['matchPercentage'], reverse=True)
-        top_matches = all_career_scores[:3] # Slices the top 3 results
+        top_matches = all_career_scores[:3] 
 
-        # 4. Formulate the Reply
         if top_matches:
-            # Dynamically list the skills the user actually has
             user_skill_string = ", ".join([m.title() for m in user_skills_list]) if user_skills_list else "the ones provided"
             bot_reply = f"**Simulation Complete!** ⚙️\n\nBased on your skills in **{user_skill_string}**, I found multiple viable career paths. Click on any role below to view your personalized learning roadmap."
         else:
@@ -116,7 +109,6 @@ def chat_api(request):
         bot_reply = f"System Error in AI Engine: {str(e)}"
         top_matches = []
 
-    # Send the array of Top 3 matches to React!
     return Response({
         "reply": bot_reply,
         "matches": top_matches 
@@ -129,17 +121,15 @@ def upload_resume_api(request):
         
     resume_file = request.FILES['resume']
     
-    # 1. Save the uploaded PDF to a temporary file on the server
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
         for chunk in resume_file.chunks():
             temp_pdf.write(chunk)
         temp_pdf_path = temp_pdf.name
 
     try:
-        # 2. Upload the temporary PDF to the Gemini File API
+
         uploaded_pdf = genai.upload_file(temp_pdf_path)
         
-        # 3. Instruct the AI to read the document
         prompt = """
         Analyze this resume document. Extract all technical skills, programming languages, and tools mentioned.
         Return ONLY a valid JSON array of lowercase strings.
@@ -155,15 +145,43 @@ def upload_resume_api(request):
         else:
             extracted_skills = []
             
-        # 4. Clean up: Delete the file from Google's servers and your local laptop
         genai.delete_file(uploaded_pdf.name)
         os.remove(temp_pdf_path)
         
-        # 5. Send the extracted array back to React
         return Response({"skills": extracted_skills})
         
     except Exception as e:
-        # Cleanup on failure
         if os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)
         return Response({"error": f"AI Parsing Error: {str(e)}"}, status=500)
+
+@api_view(['POST'])
+def generate_courses_api(request):
+    try:
+        career = request.data.get('career')
+        missing_skills = request.data.get('missingSkills', [])
+
+        if not missing_skills:
+            return Response({'courses': []})
+
+        prompt = f"""
+        The user wants to become a {career}. They are currently missing these core skills: {', '.join(missing_skills)}.
+        Act as an expert academic advisor. Recommend exactly 3 highly specific, free online courses or exact YouTube search queries so they can learn these skills.
+        
+        You MUST return ONLY a valid JSON array of objects. Do not include markdown formatting, backticks, or extra text.
+        Structure exactly like this:
+        [
+            {{"title": "Full Course Name or YouTube Query", "platform": "YouTube / Coursera / etc", "estimated_hours": 10}}
+        ]
+        """
+
+        response = model.generate_content(prompt)
+        
+        raw_text = response.text.replace('```json', '').replace('```', '').strip()
+        courses_data = json.loads(raw_text)
+
+        return Response({'courses': courses_data})
+
+    except Exception as e:
+        print("Syllabus Error:", str(e))
+        return Response({'error': 'Failed to generate syllabus.'}, status=500)

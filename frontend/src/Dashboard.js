@@ -3,40 +3,54 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import html2canvas from 'html2canvas'; // NEW
-import { jsPDF } from 'jspdf';         // NEW
+import html2canvas from 'html2canvas'; 
+import { jsPDF } from 'jspdf';         
 import './App.css';
 
-// --- NEW FEATURE: The Interactive Top 3 Roadmap ---
-// --- NEW FEATURE: The Interactive Top 3 Roadmap ---
-// --- NEW FEATURE: The Interactive Top 3 Roadmap (Now with PDF Export!) ---
 const InteractiveRoadmap = ({ matches }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
-  const printRef = useRef(null); // The camera lens for our PDF
-  
+  const printRef = useRef(null); 
+
+  const [courses, setCourses] = useState([]);
+  const [isGeneratingSyllabus, setIsGeneratingSyllabus] = useState(false);
+
+  useEffect(() => {
+    setCourses([]);
+  }, [selectedIndex]);
+
   const activeMatch = matches[selectedIndex];
 
   if (!activeMatch) return null;
 
   const isPerfectMatch = !activeMatch.missingSkillsData || activeMatch.missingSkillsData.length === 0;
 
-  // The PDF Generation Function
+  const handleGenerateSyllabus = async () => {
+    setIsGeneratingSyllabus(true);
+    try {
+      const res = await axios.post('http://127.0.0.1:8000/api/generate-courses/', {
+        career: activeMatch.career,
+        missingSkills: activeMatch.missingTextList
+      });
+      setCourses(res.data.courses || []);
+    } catch (error) {
+      alert("Error generating syllabus from AI.");
+    }
+    setIsGeneratingSyllabus(false);
+  };
+
   const handleExportPDF = async () => {
     if (!printRef.current) return;
-    setIsExporting(true); // Changes button text to 'Exporting...'
+    setIsExporting(true); 
     
     try {
-      // 1. Take a high-resolution snapshot of the div
       const canvas = await html2canvas(printRef.current, { scale: 2, backgroundColor: '#0f172a' });
       const imgData = canvas.toDataURL('image/png');
       
-      // 2. Create the PDF document
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      // 3. Paste the image into the PDF and save it
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`ByteCraft_Roadmap_${activeMatch.career.replace(/\s+/g, '_')}.pdf`);
     } catch (error) {
@@ -106,11 +120,78 @@ const InteractiveRoadmap = ({ matches }) => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
+            {/* NEW: The Dynamic Syllabus Section */}
+            <div style={{ marginTop: '30px' }}>
+              {courses.length === 0 ? (
+                <div style={{ textAlign: 'center' }}>
+                  <button 
+                    onClick={handleGenerateSyllabus}
+                    disabled={isGeneratingSyllabus}
+                    style={{
+                      padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white',
+                      border: 'none', borderRadius: '6px', cursor: isGeneratingSyllabus ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold', transition: '0.2s', width: '100%'
+                    }}
+                  >
+                    {isGeneratingSyllabus ? '🤖 AI is curating your syllabus...' : '📚 Generate Dynamic Syllabus'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <h3 style={{ color: '#3b82f6', marginBottom: '15px', borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
+                    Recommended Learning Path
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {courses.map((course, idx) => {
+                  
+                      const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(course.title)}`;
+                      
+                      return (
+                        <a 
+                          key={idx} 
+                          href={youtubeSearchUrl}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ 
+                            backgroundColor: '#1e293b', padding: '15px', borderRadius: '8px', 
+                            borderLeft: '4px solid #ef4444', display: 'flex', justifyContent: 'space-between', 
+                            alignItems: 'center', textDecoration: 'none', cursor: 'pointer', transition: 'all 0.2s ease-in-out'
+                          }}
+                          
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.boxShadow = 'none';
+                          }}
+                        >
+                          <div>
+                            <h4 style={{ color: 'white', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              ▶️ {course.title}
+                            </h4>
+                            <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                              Platform: <strong>{course.platform}</strong>
+                            </span>
+                          </div>
+                          <div style={{ backgroundColor: '#0f172a', padding: '5px 10px', borderRadius: '4px', color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                            ~{course.estimated_hours} Hours
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* END Dynamic Syllabus Section */}
           </>
         )}
       </div>
 
-      {/* 3. The Export Button (Outside the printRef so it doesn't show up in the PDF) */}
+      {/* 3. The Export Button */}
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
         <button 
           onClick={handleExportPDF} 
@@ -145,7 +226,6 @@ function Dashboard() {
     skills: []
   });
   
-  // You can easily add or remove skills here to match your database
   const availableSkills = ['Python', 'Java', 'SQL', 'React', 'HTML', 'CSS', 'Figma', 'Django', 'JavaScript', 'C++'];
 
   const [messages, setMessages] = useState([
@@ -174,7 +254,6 @@ function Dashboard() {
     navigate('/login');
   };
 
-  // 2. ADDED: Wizard Handlers
   const handleSkillToggle = (skill) => {
     setFormData(prev => {
       const skills = prev.skills.includes(skill)
@@ -189,7 +268,6 @@ function Dashboard() {
     if (step === 2 && (!formData.hours || parseFloat(formData.hours) <= 0)) return alert("Please enter a valid number of study hours (must be greater than 0).");
     if (step === 3 && formData.skills.length === 0) return alert("Please select at least one skill.");
 
-    // Visually add the user's choice to the chat history
     if (step === 1) setMessages(prev => [...prev, { sender: 'user', text: `Semester: ${formData.semester}` }]);
     if (step === 2) setMessages(prev => [...prev, { sender: 'user', text: `Study Time: ${formData.hours} hours/week` }]);
     if (step === 3) setMessages(prev => [...prev, { sender: 'user', text: `Skills: ${formData.skills.join(', ')}` }]);
@@ -197,14 +275,12 @@ function Dashboard() {
     setStep(prev => prev + 1);
   };
 
-  // --- NEW FEATURE: AI Resume Parsing ---
   const handleResumeUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    setIsTyping(true); // Turn on the loading animation
+    setIsTyping(true); 
 
-    // Package the file securely for transport
     const uploadData = new FormData();
     uploadData.append('resume', file);
 
@@ -215,16 +291,14 @@ function Dashboard() {
       
       const foundSkills = response.data.skills || [];
       
-      // Capitalize the AI's lowercase output so it matches our React checkboxes
       const formattedSkills = foundSkills.map(skill => {
         const match = availableSkills.find(a => a.toLowerCase() === skill.toLowerCase());
         return match ? match : skill.charAt(0).toUpperCase() + skill.slice(1);
       });
 
-      // Automatically check the boxes!
       setFormData(prev => ({
         ...prev,
-        skills: [...new Set([...prev.skills, ...formattedSkills])] // Merges without duplicates
+        skills: [...new Set([...prev.skills, ...formattedSkills])] 
       }));
       
       alert(`Success! Gemini AI found ${foundSkills.length} skills on your resume.`);
@@ -232,10 +306,9 @@ function Dashboard() {
       alert("Error: The AI could not read this PDF.");
     }
     
-    setIsTyping(false); // Turn off loading animation
+    setIsTyping(false);
   };
 
-  // 3. ADDED: Trigger AI when wizard finishes
   useEffect(() => {
     if (step === 4) {
       const constructedMessage = `I am a ${formData.semester} student. I can study ${formData.hours} hours a week. I know ${formData.skills.join(', ')}.`;
@@ -243,7 +316,6 @@ function Dashboard() {
     }
   }, [step]);
 
-  // 4. MODIFIED: Separated API logic from form submission
   const sendToAI = async (textPayload) => {
     setIsTyping(true);
     try {
@@ -253,7 +325,6 @@ function Dashboard() {
         academicLevel: formData.semester || 'Student'
       });
       
-      // We now look for 'matches' instead of 'chartData'
       const botReply = { sender: 'bot', text: response.data.reply, matches: response.data.matches };
       setMessages(prev => [...prev, botReply]);
     } catch (error) {
@@ -271,7 +342,6 @@ function Dashboard() {
     setInput('');
   };
 
-  // Common styles for wizard elements
   const inputStyle = { padding: '10px', margin: '10px 0', borderRadius: '6px', border: '1px solid #334155', background: '#0f172a', color: 'white', width: '100%' };
   const btnStyle = { padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginTop: '10px' };
 
@@ -295,7 +365,7 @@ function Dashboard() {
             <div className="message" style={{ width: msg.matches && msg.matches.length > 0 ? '100%' : 'auto' }}>
               <ReactMarkdown>{msg.text}</ReactMarkdown>
               
-              {/* Renders the new interactive tabs if the bot sent matches! */}
+              {/* Renders the interactive tabs if the bot sent matches */}
               {msg.matches && msg.matches.length > 0 && (
                 <InteractiveRoadmap matches={msg.matches} />
               )}
